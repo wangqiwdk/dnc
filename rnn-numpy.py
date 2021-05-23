@@ -2,17 +2,12 @@
 # author: kmrocki
 # based on the original code by A.Karpathy (char-rnn) https://gist.github.com/karpathy/d4dee566867f8291f086
 
-from __future__ import print_function
 import numpy as np
 import argparse, sys
 import datetime, time
-import random
+import pickle
 from random import uniform
 
-try:
-  xrange          # Python 2
-except NameError:
-  xrange = range  # Python 3
 
 ### parse args
 parser = argparse.ArgumentParser(description='')
@@ -28,9 +23,12 @@ learning_rate = 1e-1
 clipgrads = False
 
 # data I/O
-data = open('./alice29.txt', 'r').read()
+data = open('./样本数据.txt', 'r', encoding='utf-8').read()
 
 chars = list(set(data)) # 获取可用字符集
+with open('words.txt','w', encoding='utf-8') as f:
+  f.write('\n'.join(chars))
+
 data_size, M = len(data), len(chars) # 数据长度与字符集数量
 print('data has %d characters, %d unique.' % (data_size, M))
 char_to_ix = { ch:i for i,ch in enumerate(chars) }
@@ -63,7 +61,7 @@ def train(inputs, targets, hprev):
   loss = 0
   # 前向 遍历序列中每一个字符，即从时间0计算到时间S
   # forward pass
-  for t in xrange(len(inputs)):
+  for t in range(len(inputs)):
     # xs[t]保存每个序列中第t个字符的one-hot向量
     xs[t] = np.zeros((M, B)) # encode in 1-of-k representation
     for b in range(0,B): xs[t][:,b][inputs[t][b]] = 1
@@ -91,7 +89,7 @@ def train(inputs, targets, hprev):
   dhnext = np.zeros_like(hs[0])
 
   # 倒序遍历序列，累计梯度
-  for t in reversed(xrange(len(inputs))):
+  for t in reversed(range(len(inputs))):
     dy = np.copy(ps[t]) # (M,B)
     for b in range(0,B): dy[targets[t][b], b] -= 1 # backprop into y
     dWhy += np.dot(dy, hs[t].T) # (M,B)*(B,HN)=(M,HN)
@@ -116,7 +114,7 @@ def sample(h, seed_ix, n):
   x = np.zeros((M, 1))
   x[seed_ix] = 1
   ixes = []
-  for t in xrange(n):
+  for t in range(n):
     h = np.tanh(np.dot(Wxh, x) + np.dot(Whh, h) + bh)
     y = np.dot(Why, h) + by
     p = np.exp(y) / np.sum(np.exp(y))
@@ -167,6 +165,11 @@ while t < T:
       last = time.time()
       t = time.time()-start
       print('%.3f s, iter %d, %.4f BPC, %.2f char/s' % (t, n, smooth_loss / S, (B*S*10)/tdelta)) # print progress
+  
+  if n % 100 == 0:
+    sent=sample(np.zeros((HN,1)), chars.index('我'), 100)
+    sent=[chars[i] for i in sent]
+    print('我'+''.join(sent))
 
   # 使用adagrad算法更新参数
   for param, dparam, mem in zip([Wxh, Whh, Why, bh, by],
@@ -179,4 +182,3 @@ while t < T:
   # 本轮数据的序列终点，作为下轮的序列起点
   for b in range(0,B): p[b] += S # move data pointer
   n += 1 # iteration counter
-
