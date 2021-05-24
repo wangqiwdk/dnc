@@ -19,6 +19,7 @@ opt = parser.parse_args()
 B = opt.batchsize # batch size
 S = opt.seqlength # unrolling in time steps
 HN = opt.hidden # size of hidden layer of neurons
+print(f'B={B},S={S},HN={HN}')
 learning_rate = 1e-1
 clipgrads = False
 
