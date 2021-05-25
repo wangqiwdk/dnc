@@ -53,40 +53,57 @@ def train(inputs, targets, cprev, hprev):
 	hprev is HxB array of initial hidden state
 	returns the loss, gradients on model parameters, and last hidden state
 	"""
+	# xs输入向量(t,M,B) hs隐藏状态(t,HN,B) ys输出向量(t,M,B) ps预测字符向量(t,M,B)
+	# gs门向量(t,4HN,B) cs cell状态(t,HN,B)
 	# inputs, outputs, controller states
 	xs, hs, ys, ps, gs, cs = {}, {}, {}, {}, {}, {}
 	#init previous states
+	# 初始化-1时刻状态
 	hs[-1], cs[-1] = np.copy(hprev), np.copy(cprev)
 
 	loss = 0
+	# 前向计算，从序列第一个位置开始
 	# forward pass
 	for t in range(len(inputs)):
+		# t时刻输入字符的one-hot编码
 		xs[t] = np.zeros((M, B)) # encode in 1-of-k representation
 		for b in range(0,B): xs[t][:,b][inputs[t][b]] = 1
-
+		
+		# 计算门向量 
+		# gs[t]形状为(4HN,B)
+		# 其中
+		# (0:HN,:)为输入门
+		# (HN:2HN,:)为输出门
+		# (2HN:3HN,:)为遗忘门
+		# (3HN:4HN,B)为新cell状态
 		gs[t] = np.dot(Wxh, xs[t]) + np.dot(Whh, hs[t-1]) + bh # gates, linear part
 
 		# gates nonlinear part
 		gs[t][0:3*HN,:] = sigmoid(gs[t][0:3*HN,:]) #i, o, f gates
 		gs[t][3*HN:4*HN, :] = np.tanh(gs[t][3*HN:4*HN,:]) #c gate
 
-		#mem(t) = c gate * i gate + f gate * mem(t-1)
+		# cell[t] = input_gate * new_cell + forget_gate * cell[t-1]
+		# hide[t] = out_gate * tanh(cell[t])
 		cs[t] = gs[t][3*HN:4*HN,:] * gs[t][0:HN,:] + gs[t][2*HN:3*HN,:] * cs[t-1]
+		# NOTE: 是否保留tanh到下一轮？
 		cs[t] = np.tanh(cs[t]) # mem cell - nonlinearity
 		hs[t] = gs[t][HN:2*HN,:] * cs[t] # new hidden state
+		# 计算下一个字符的概率
 		ys[t] = np.dot(Why, hs[t]) + by # unnormalized log probabilities for next chars
 
 		###################
+		# 归一化概率
 		mx = np.max(ys[t], axis=0)
 		ys[t] -= mx # normalize
 		ps[t] = np.exp(ys[t]) / np.sum(np.exp(ys[t]), axis=0) # probabilities for next chars
 
+		# 累计batch中每个样本的损失
 		for b in range(0,B):
 			if ps[t][targets[t,b],b] > 0: loss += -np.log(ps[t][targets[t,b],b]) # softmax (cross-entropy loss)
 
+	# 后向
 	# backward pass:
 	dWxh, dWhh, dWhy = np.zeros_like(Wxh), np.zeros_like(Whh), np.zeros_like(Why)
-
 	dbh, dby = np.zeros_like(bh), np.zeros_like(by)
 	dcnext = np.zeros_like(cs[0])
 	dhnext = np.zeros_like(hs[0])
@@ -116,7 +133,7 @@ def train(inputs, targets, cprev, hprev):
 		dcnext = dc * gs[t][2*HN:3*HN,:]
 
 		if clipgrads:
-			for dparam in [dWxh, dWhh, dWhy, dWhr, dWhv, dWhw, dWhe, dWrh, dWry, dbh, dby]:
+			for dparam in [dWxh, dWhh, dWhy, dbh, dby]:
 				np.clip(dparam, -5, 5, out=dparam) # clip to mitigate exploding gradients
 	return loss, dWxh, dWhh, dWhy, dbh, dby, cs[len(inputs)-1], hs[len(inputs)-1]
 
