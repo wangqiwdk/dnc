@@ -146,7 +146,8 @@ while t < T:
 	# prepare inputs (we're sweeping from left to right in steps S long)
 	for b in range(0,B):
 		# 如果当前序列的起点超过最大起点，或者当前为第一轮，
-		# 则初始化对应序列的前一轮隐藏层hprev[:,b]和当前序列的起点
+		# 则重置对应序列的前一轮隐藏层hprev[:,b]
+		# 并重新选择当前序列的起点
 		if p[b]+S+1 >= len(data) or n == 0:
 			hprev[:,b] = np.zeros(HN) # reset hidden memory
 			p[b] = np.random.randint(len(data)-1-S)

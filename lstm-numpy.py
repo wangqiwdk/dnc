@@ -117,18 +117,19 @@ def train(inputs, targets, cprev, hprev):
 
 		if clipgrads:
 			for dparam in [dWxh, dWhh, dWhy, dWhr, dWhv, dWhw, dWhe, dWrh, dWry, dbh, dby]:
-						np.clip(dparam, -5, 5, out=dparam) # clip to mitigate exploding gradients
+				np.clip(dparam, -5, 5, out=dparam) # clip to mitigate exploding gradients
 	return loss, dWxh, dWhh, dWhy, dbh, dby, cs[len(inputs)-1], hs[len(inputs)-1]
 
-n = 0
+n = 0 # 迭代计数
 p = np.random.randint(len(data)-1-S,size=(B)).tolist()
-inputs = np.zeros((S,B), dtype=int)
-targets = np.zeros((S,B), dtype=int)
-cprev = np.zeros((HN,B))
-hprev = np.zeros((HN,B))
+inputs = np.zeros((S,B), dtype=int) # 输入向量(S,B)
+targets = np.zeros((S,B), dtype=int) # 目标向量(S,B)
+cprev = np.zeros((HN,B)) # cell状态向量(HN,B)
+hprev = np.zeros((HN,B)) # 隐藏状态向量(HN,B)
+# 用于adagrad算法，累计梯度
 mWxh, mWhh, mWhy  = np.zeros_like(Wxh), np.zeros_like(Whh), np.zeros_like(Why)
 mbh, mby = np.zeros_like(bh), np.zeros_like(by) # memory variables for Adagrad
-smooth_loss = -np.log(1.0/M)*S # loss at iteration 0
+smooth_loss = -np.log(1.0/M)*S # loss at iteration 0 初始损失
 start = time.time()
 
 t = time.time()-start
@@ -136,14 +137,18 @@ last=start
 while t < T:
 	# prepare inputs (we're sweeping from left to right in steps S long)
 	for b in range(0,B):
+		# 如果当前序列的起点超过最大起点，或者当前为第一轮，
+		# 则重置对应序列的cprev[:,b]、hprev[:,b]
+		# 并重新选择当前序列的起点
 		if p[b]+S+1 >= len(data) or n == 0:
 			cprev[:,b] = np.zeros(HN) # reset LSTM memory
 			hprev[:,b] = np.zeros(HN) # reset hidden memory
 			p[b] = np.random.randint(len(data)-1-S)
-
+		# 构建新一轮的输入与目标向量
 		inputs[:,b] = [char_to_ix[ch] for ch in data[p[b]:p[b]+S]]
 		targets[:,b] = [char_to_ix[ch] for ch in data[p[b]+1:p[b]+S+1]]
 
+	# 前向计算S个字符，返回损失与各参数的梯度
 	# forward S characters through the net and fetch gradient
 	loss, dWxh, dWhh, dWhy, dbh, dby, cprev, hprev = train(inputs, targets, cprev, hprev)
 	smooth_loss = smooth_loss * 0.999 + np.mean(loss)/(np.log(2)*B) * 0.001
@@ -153,12 +158,14 @@ while t < T:
 		t = time.time()-start
 		print('%.3f s, iter %d, %.4f BPC, %.2f char/s' % (t, n, smooth_loss / S, (B*S*10)/tdelta)) # print progress
 	
+	# 更新参数
 	for param, dparam, mem in zip([Wxh, Whh, Why, bh, by],
 									[dWxh, dWhh, dWhy, dbh, dby], 
 									[mWxh, mWhh, mWhy, mbh, mby]):
-	# perform parameter update with Adagrad
+		# perform parameter update with Adagrad
 		mem += dparam * dparam
 		param += -learning_rate * dparam / np.sqrt(mem + 1e-8) # adagrad update
 
+	# 本轮数据的序列终点，作为下轮的序列起点
 	for b in range(0,B): p[b] += S # move data pointer
 	n += 1 # iteration counter
